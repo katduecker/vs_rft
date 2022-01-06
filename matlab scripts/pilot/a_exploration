@@ -1,0 +1,19 @@
+%% Pilot analysis: VS, alpha and RFT
+
+%% Settings
+clear all; close all; clc; beep off;
+mpth = '/rds/projects/j/jenseno-visual-search-rft';
+cd(mpth)
+megpth = fullfile(mpth,'pilot','meg');
+rsppth = fullfile(mpth,'pilot','responses');
+cdpth = fullfile(mpth,'experiment');
+mtlpth = fullfile(mpth,'matlab','pilot');
+addpath(mtlpth)
+ft_defaults;
+subjcode = 'b58b';
+
+pthout = fullfile(mpth,'pilot','results',subjcode);
+
+figpth = fullfile(mpth,'pilot','results','plots',subjcode);
+mkdir(figpth)
+fs = 1000;

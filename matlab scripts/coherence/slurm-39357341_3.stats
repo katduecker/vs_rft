@@ -1,0 +1,17 @@
++--------------------------------------------------------------------------+
+| Job on the BlueBEAR cluster:
+| Starting at Thu Nov 25 18:10:06 2021 for dueckerk(608938)
+| Identity jobid 39357341 jobname coh_contrasts.sh
+| Array Identity 39357341_3
+| Running against project jenseno-entrainment and in partition broadwell-shared
+| Requested cpu=1,mem=120G,node=1,billing=1 - 06:00:00 walltime
+| Assigned to nodes bber0501u38b
+| Command /rds/projects/j/jenseno-visual-search-rft/Visual Search RFT/matlab scripts/coherence/coh_contrasts.sh
+| WorkDir /rds/projects/j/jenseno-visual-search-rft/Visual Search RFT/matlab scripts/coherence
++--------------------------------------------------------------------------+
++--------------------------------------------------------------------------+
+| Finished at Thu Nov 25 20:59:46 2021 for dueckerk(608938) on the BlueBEAR Cluster
+| Required (02:46:50 cputime, 75454999K memory used) - 02:49:42 walltime
+| JobState COMPLETING - Reason None
+| Exitcode 0:0
++--------------------------------------------------------------------------+

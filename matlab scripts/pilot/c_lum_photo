@@ -1,0 +1,11 @@
+% Equipment test: luminance of colours
+
+clear all; close all; clc; beep off;
+mpth = '/rds/projects/j/jenseno-visual-search-rft/Visual Search RFT';
+cd(mpth)
+megpth = fullfile(mpth,'pilot','meg');
+rsppth = fullfile(mpth,'pilot','responses');
+cdpth = fullfile(mpth,'experiment');
+mtlpth = fullfile(mpth,'matlab','pilot');
+addpath(mtlpth)
+ft_defaults;
