@@ -31,7 +31,7 @@ for f = 1:length(foi)
     diode_foi = ft_preprocessing(cfg,data);
     
     % init matrices with zero padding
-    meg_pad = zeros(length(data_foi.trial),length(data_foi.label),8*data.fsample);
+    meg_pad = zeros(length(data_foi.trial),length(data_foi.label),length(data_foi.time{1}));
     misc_pad = meg_pad;
     csd_pad = meg_pad;
     
@@ -54,9 +54,9 @@ for f = 1:length(foi)
             csd_meg_misc_trl = meg .* conj(misc);
             
             % fill into trialxchannelxtime matrix
-            meg_pad(t,:,1:size(psd_meg_trl,2)) = psd_meg_trl;
-            misc_pad(t,:,1:size(psd_misc_trl,2)) = psd_misc_trl;
-            csd_pad(t,:,1:size(csd_meg_misc_trl,2)) = csd_meg_misc_trl;
+            meg_pad(t,:,:) = psd_meg_trl;
+            misc_pad(t,:,:) = psd_misc_trl;
+            csd_pad(t,:,:) = csd_meg_misc_trl;
             
         end
     
@@ -79,12 +79,12 @@ for f = 1:length(foi)
 end
         
 coh_spct = csd_meg_misc./(psd_meg.*psd_misc);           % coherence spectrum
-
-% % only select -1.5 2 seconds (this is a bit of a stupid way of doing it...)
-[~,ilow] = min(abs(data.time{1} + 1.5));
-[~,iup] = min(abs(data.time{1} - 2));
-
-psd_meg = psd_meg(:,:,ilow:iup);
-psd_misc = psd_misc(:,:,ilow:iup);
-csd_meg_misc = csd_meg_misc(:,:,ilow:iup);
-coh_spct = coh_spct(:,:,ilow:iup);
+% 
+% % % only select -1.5 2 seconds (this is a bit of a stupid way of doing it...)
+% [~,ilow] = min(abs(data.time{1} + 1.5));
+% [~,iup] = min(abs(data.time{1} - 2));
+% 
+% psd_meg = psd_meg(:,:,ilow:iup);
+% psd_misc = psd_misc(:,:,ilow:iup);
+% csd_meg_misc = csd_meg_misc(:,:,ilow:iup);
+% coh_spct = coh_spct(:,:,ilow:iup);
