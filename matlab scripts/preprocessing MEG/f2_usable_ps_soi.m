@@ -4,8 +4,7 @@
 % check which participants have to be excluded based on the soi
 % identification
 clear all; close all; clc
-pth = 'Z:\Visual Search RFT';
-addpath('Z:\fieldtrip')
+pth = '/rds/projects/j/jenseno-visual-search-rft/Visual Search RFT';
 % addpath('/rds/projects/j/jenseno-visual-search-rft/Visual Search RFT/matlab scripts/edf-converter-master'); %edf2mat converter
 % rawdata 
 megpth = fullfile(pth,'data');
@@ -14,10 +13,7 @@ dtpth = fullfile(pth,'results','meg', '1 maxfilter');
 % ICA comps
 icapth = fullfile(pth,'results','meg', '3 ICA');
 % coherence path
-cohpth = fullfile(pth,'results','meg', '5 COH hilb','soi');
-
-addpath(fullfile('W:\','fieldtrip'))
-ft_defaults;
+cohpth = fullfile(pth,'results','meg', '5 COH hilb','soi','sinusoid');
 
 % list subj
 d = dir(cohpth);
@@ -28,13 +24,14 @@ clear d folds
 
 load(fullfile(pth,'results','meg', '2 merged edf mat','docu_merge.mat'))
 
-empty_idx = logical(cell2mat(cellfun(@isempty,mergesubj(:,2),'UniformOutput',false)));
-mergesubj = mergesubj(~empty_idx,:)
+% empty_idx = logical(cell2mat(cellfun(@isempty,mergesubj(:,2),'UniformOutput',false)));
+% mergesubj = mergesubj(~empty_idx,:)
 mergesubj = [mergesubj,cell(length(subjfolds),1)];
-
+num_soi = zeros(length(subjfolds),1);
 for s = 1:length(subjfolds)
     try 
         load(fullfile(cohpth,subjfolds{s},'soi_stat.mat'))
+    num_soi(s) = length(soi_stat);
     if isempty(soi_stat)
         mergesubj{s,5} = 'no soi';
     else
@@ -42,6 +39,7 @@ for s = 1:length(subjfolds)
     end
     clear soi_stat
     catch ME
+        mergesubj{s,5} = 'no soi';
     end
 end
 save(fullfile(pth,'results','meg', '2 merged edf mat','docu_merge_soi_coh.mat'),'mergesubj')
@@ -54,4 +52,4 @@ folds = {d.name};
 subjfolds = folds(strncmp(folds,'202',3));
 [~,usable_idx] = intersect(subjfolds,mergesubj(strcmp(mergesubj(:,5),'soi identified'),1))
 
-save(fullfile(pth,'matlab scripts/',"preprocessing MEG/",'idx_subjoi.mat'),'usable_idx')
+save(fullfile(pth,'matlab scripts/',"preprocessing MEG/",'idx_subjoi.mat'),'usable_idx','num_soi')

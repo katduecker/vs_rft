@@ -1,28 +1,57 @@
 %% VS + RFT
 % PhD project 2
+
+% b. Semi-automatic artefact rejection
+
 % [c] Katharina Duecker
 
-% merge edf, fif and mat files
-% - script adjusts trial indices for the 3 files
-% - if trial indices differ, user has to adjust trials by hand (too avoid
-% errors and identify nature of inconsistencies)
+% outputs: trl_overlap_meg_el_rsp.mat
+
+% - meginfo: structure containing 
+%   - alltrl_bl/alltrl_list: info on MEG trials, indices in blocks and lists
+%   - keeptrl_all:            index of trials that should be rejected from edf, matfile and MEG rejtrl_all
+%   - meg_rt:                reaction time read out by triggers
+%   - trigtrl:               triggers read out for each trial (should be trial type, 2, number >5000 - button press)
+
+% - elinfo: structure containing
+%   - eltrl (trial information): 
+%            - trial type (trigger); 
+%            - time points start - onset display - end of trial (trigger 4)
+%            - samples corrsponding to time points above
+%   - keeptrl_rsp: logical array, trials to be kept based on response file -> use before keeptrl_all!
+%   - keeptrl_all: logical array, which trials to be kept of all (after rsp have been selected)
+
+% - rspinfo: structure containing
+%   - trl: cell containing trial type (trigger), 'h/m/fa', RT as read out by stim computer
+%   - keeptrl_rsp (same as elinfo): logical array, trials to be kept based on response file -> use before keeptrl_all!
+%   - keeptrl_all (same as elinfo): logical array, which trials to be kept of all (after rsp have been selected)
+
+%% Preprocessing
+% a. Define trial structure 
+% b. Semi-automatic artefact rejection
+% c. Define delays in photodiode and reject strange trials 
+% d. Identify eye movement
+% e. Run ICA with maximum 68 components
+% f. Find sensors with significant RFT response
+% g. Split trials into conditions
 
 clear all; close all; clc; beep off
 
-% define paths
-pth = 'D:\UoB\Proj2_Visual Search';                                 % main path
-mtpth = fullfile('Z:\Visual Search RFT','matlab scripts');          % matlab scripts path
-% addpath('C:\Users\katha\Documents\MATLAB\edf-converter-master');                    %edf2mat converter
-% 
-% addpath('C:\Program Files (x86)\SR Research\EyeLink\bin')           % eyelink path
-command = 'edf2asc.exe';                                            % eyelink function edf2asc
+%% PATHS
+pth = '/rds/projects/j/jenseno-visual-search-rft/Visual Search RFT';                                 % main path
+mtpth = fullfile(pth,'matlab scripts');                       % matlab scripts path
 
-dtpth = fullfile(pth,'data');                                       % data path
+
+edfconvpath = fullfile(pth,'edf-converter-master/');          % path to edf converter
+addpath(edfconvpath)
+command = 'edf2asc.exe';                                      % eyelink function edf2asc                                         
+
+dtpth = fullfile(pth,'data');                                 % data path
 maxfpth = fullfile(pth, 'results','meg','1 maxfilter');
-trl_merge_pth = fullfile(pth, 'results','meg','2 merged edf mat');  % path where results are tb stored
+trl_merge_pth = fullfile(pth, 'results','meg','2 merged edf mat');  % results path
 mkdir(trl_merge_pth)
 
-addpath('C:\Users\dueckerk\Documents\MATLAB\fieldtrip\')                % fieldtrip
+addpath(fullfile('/rds/projects/j/jenseno-visual-search-rft/','fieldtrip'))                              % fieldtrip  
 ft_defaults;
 
 % list subjects
@@ -35,160 +64,65 @@ clear d folds
 % document: subject id, n trial meg, el adjusted, response adjusted
 if exist(fullfile(pth,'results','meg', '2 merged edf mat','docu_merge.mat'))             % subject documentation exists already
     load(fullfile(pth,'results','meg', '2 merged edf mat','docu_merge.mat'))             % load
+    if size(mergesubj,1) < length(subjfolds)
+        mergesubj = [mergesubj,cell(length(subjfolds)-size(mergesubj,1),4)];
+    end
 else
     mergesubj = cell(length(subjfolds),4);                                               % else create empty cell
 end
-
-noisy_subj = table2cell(readtable(fullfile(pth,'results','meg','1 maxfilter','noisy_subj.xlsx'),'ReadVariableNames',false));
 
 propixx_res = [1920 1080];                                   % propixx resolution
 
 load(fullfile(pth,'experiment','button_val.mat'),'buttons_right');
 buttons_right = buttons_right(1:3);
-for s = 41%length(subjfolds)
-    
+
+
+for s = [21,27]
+    % current subject
     disp(['subj ', subjfolds{s}])
-    el_fsample = 1000;
     mergesubj{s,1} = subjfolds{s};
     trl_merge_pth = fullfile(pth, 'results','meg','2 merged edf mat');
     
-    if ~isempty(find(ismember(noisy_subj,subjfolds{s})))
-        mergesubj{s,2} = 'MEG noisy';
-        continue
-    end
-
-    %skip if done for this participant
-%     if exist(fullfile(pth,'results','meg', '2 merged edf mat', subjfolds{s},...
-%             'trl_overlap_meg_el_rsp.mat'))
-%         disp('merge file exists')
-%         continue
-%     end
-
     %% Prep el file
-    % if edf file has been converted to mat file already, load it
-    if exist(fullfile(dtpth,subjfolds{s},'el_edf2mat.mat'))
-        load(fullfile(dtpth,subjfolds{s},'el_edf2mat.mat'))
-        
-        
+
+    % convert edf file to mat struct using edf2mat
+    % list files ending in edf.
+    d = dir(fullfile(dtpth,subjfolds{s}));
+    f = {d.name};
+    idx = cellfun(@(x) regexp(x,'.edf'),f,'UniformOutput',false);
+    idxx = cell2mat(cellfun(@(x) ~isempty(x),idx,'UniformOutput',false));
+    edf_files = f(idxx);
+    file_out = 'el_struct.mat';
+
+    % if el structure exists,load in
+    if exist(fullfile(dtpth,subjfolds{s},file_out))
+
+        load(fullfile(dtpth,subjfolds{s},file_out))
+        el_fsample = 1000;
+
+        % if el structure does not exist, load in edf file using edf2mat
+        % and then convert matlab object to struct using kd_edf2matstruct
     else
-        % convert edf file to mat struct using edf2mat
-        try
-            d = dir(fullfile(dtpth,subjfolds{s}));
-            f = {d.name};
-            % find edf file
-            idx = cellfun(@(x) regexp(x,'.edf'),f,'UniformOutput',false);
-            idxx = cell2mat(cellfun(@(x) ~isempty(x),idx,'UniformOutput',false));
-            
-            % if there is one edf file (experiment not interrupted)
-            if length(find(idxx)) == 1
-                if ~exist(fullfile(dtpth,subjfolds{s},[f{idxx}(1:end-4),'.asc']))
-                    cd(fullfile(dtpth,subjfolds{s}))
-                    system([command ' ' f{idxx}])
-                    cd(mtpth)
-                end
-                el = Edf2Mat(fullfile(dtpth,subjfolds{s},f{idxx}));
-                
-                % use fieldtrip for sampling rate (this is very
-                % inefficient...)
-                
-                % convert to asc
-                cfg = [];
-                cfg.dataset = fullfile(dtpth,subjfolds{s},[f{idxx}(1:end-4),'.asc']);
-                el_ft = ft_preprocessing(cfg);
-                
-                
-                if el_ft.fsample > 900
-                    el_fsample = round(el_ft.fsample, -3);
-                else
-                    el_fsample = round(el_ft.fsample, -2);
-                end
-                clear el_ft
-            else
-                % more than one edf file -> experiment was interrupted at
-                % some point
-                
-                idxx = find(idxx);
-                for fl = 1:length(idxx)
-                    filename = f{idxx(fl)};
-                    if ~exist(fullfile(dtpth,subjfolds{s},[filename(1:end-4),'.asc']))
-                        try
-                            cd(fullfile(dtpth,subjfolds{s}))
-                            system([command ' ' filename])
-                            cd(mtpth)
-                            
-                            cfg = [];
-                            cfg.dataset = fullfile(dtpth,subjfolds{s},[filename(1:end-4),'.asc']);
-                            el_ft = ft_preprocessing(cfg);
-                            if el_ft.fsample > 900
-                                el_fsample = round(el_ft.fsample, -3);
-                            else
-                                el_fsample = round(el_ft.fsample, -2);
-                            end
-                            clear el_ft
-                        catch ME
-                        end
-                    end
-                    % convert all files to mat structures
-                    el_all{fl} = Edf2Mat(fullfile(dtpth,subjfolds{s},filename));
-                end
-                
-                % concatenate relevant el fields
-                el = [];
-                el.timeline = [el_all{1}.timeline;el_all{2}.timeline];
-                el.normalizedTimeline = [el_all{1}.normalizedTimeline;el_all{2}.normalizedTimeline];
-                el.Events.Messages.info = [el_all{1}.Events.Messages.info,el_all{2}.Events.Messages.info];
-                el.Events.Messages.time = [el_all{1}.Events.Messages.time,el_all{1}.Events.Messages.time(end)+el_all{2}.Events.Messages.time];
-                el.Samples.time = [el_all{1}.Samples.time;el_all{1}.Samples.time(end)+el_all{2}.Samples.time];
-                el.Samples.posX = [el_all{1}.Samples.posX; el_all{2}.Samples.posX];
-                el.Samples.posY = [el_all{1}.Samples.posX; el_all{2}.Samples.posY];
-                el.Events.Esacc.start = [el_all{1}.Events.Esacc.start, el_all{2}.Events.Esacc.start];
-                el.Events.Ssacc.time = [el_all{1}.Events.Ssacc.time,el_all{1}.Events.Ssacc.time(end)+el_all{2}.Events.Ssacc.time];
-                el.Events.Esacc.duration = [el_all{1}.Events.Esacc.duration,el_all{2}.Events.Esacc.duration];
-                el.Events.Sblink.time = [el_all{1}.Events.Sblink.time,el_all{2}.Events.Sblink.time];
-            end
-            
-            % resample by hand if sampling rate higher than 1000 has been
-            % used (by accident, this shouldn't happen)
-            if el_fsample > 1000
-                sr = el_fsample/1000;
-                el_resamp = [];
-                el_resamp.Samples.time = el.Samples.time(1:sr:length(el.Samples.time));
-                el_resamp.Samples.posX = el.Samples.posX(1:sr:length(el.Samples.time));
-                el_resamp.Samples.posY = el.Samples.posY(1:sr:length(el.Samples.time));
-                el_resamp.Events.Esacc.start = el.Events.Esacc.start;
-                el_resamp.Events.Ssacc.time = el.Events.Ssacc.time;
-                el_resamp.Events.Esacc.duration  = el.Events.Esacc.duration;
-                el_resamp.Events.Sblink.time = el.Events.Sblink.time; 
-                el_resamp.Events.Messages.info = el.Events.Messages.info;
-                el_resamp.Events.Messages.time = el.Events.Messages.time;
-                
-                el = el_resamp;
-                save(fullfile(dtpth,subjfolds{s},'el_struct.mat'),'el','-v7.3')
+        % if there is one edf file (experiment not interrupted)
+        if length(edf_files) == 1
+            el = kd_edf2mat2struct(edfconvpath, fullfile(dtpth,subjfolds{s}), edf_files{1},file_out);
+            el_fsample = 1000;
 
-            end
+            % if there is two
+        elseif length(edf_files) == 2
+            el = kd_edf2mat2struct_(edfconvpath, fullfile(dtpth,subjfolds{s}), edf_files,file_out);
+            el_fsample = 1000;
 
-        catch ME
-            mergesubj{s,3} = 'no el file';
-
-            disp('no el file');
+            % error if there is none or >2
+        else
+            mergesubj{s,3} = 'unusual number of el files';
             continue
         end
     end
     
-    % if elinfo already exists (re-running script, skip above disabled)
-    % load el to skip all of the above
-    if exist(fullfile(trl_merge_pth,subjfolds{s},'trl_overlap_meg_el_rsp.mat'))
-        load(fullfile(trl_merge_pth,subjfolds{s},'trl_overlap_meg_el_rsp.mat'),'elinfo')
-        
-        try
-            el_fsample = elinfo.fsample;
-            clear elinfo
-        catch ME
-        end
-    end
-    
+
     %% Prep MEG 
-    % load events from maxfiltered data
+    % list maxfiltered fif files
     mgfls = dir(fullfile(maxfpth,subjfolds{s}));
     f = {mgfls.name};
     
@@ -207,6 +141,7 @@ for s = 41%length(subjfolds)
     %  List trial type fif
     alltrl_bl = {};
     trigtrl = {};
+
     % trl: type, start sample, end sample
     for fl = 1:length(events)
         allval = [events{fl}(find(strcmp('STI101',{events{fl}.type}))).value];   % these are all values, extract button press
@@ -215,12 +150,13 @@ for s = 41%length(subjfolds)
         % get trigger indices
         trig_bsl = find((allval >= 5)+(allval<=trigdef{end,1}) == 2);
 
-        % if there is 2 trial start trigger behind each other (why?!)
-        % delete
-        notrl_idx = (allval(trig_bsl+1) >= 5)+(allval(trig_bsl+1)<=trigdef{end,1}) == 2;
-        trig_bsl = trig_bsl(~notrl_idx);
+        % if the following trigger is not 2, reject
+        trl_idx = allval(trig_bsl+1) == 2;
+        trig_bsl = trig_bsl(trl_idx);
 
+        % store samples
         trl = [allval(trig_bsl)',allsmp(trig_bsl)' allsmp(trig_bsl+1)' allsmp(trig_bsl+2)'];
+        % store trigger values
         trigtrl{fl} = [allval(trig_bsl)',allval(trig_bsl+1)',allval(trig_bsl+2)'];
         alltrl_bl{fl} = trl;
     end
@@ -232,21 +168,17 @@ for s = 41%length(subjfolds)
   
 
     if length(trigtrl_list) < 800
-                mergesubj{s,3} = 'trigger messed up';
+        mergesubj{s,3} = 'trigger messed up';
+        continue
     end
     meg_rt = (alltrl_list(:,4) - alltrl_list(:,3))/1000;
     
     %% List trial type EL
+    
     % extract el triggers
-
     idx = cellfun(@(x) regexp(x,'trig:'),el.Events.Messages.info,'UniformOutput',false);
     idxx = cell2mat(cellfun(@(x) ~isempty(x),idx,'UniformOutput',false));
     
-    if isempty(find(idxx))
-        mergesubj{s,3} = 'no el file';
-        clear events all* begexp a b d f fl t w el* rej* rsp* tr* idx* extrtrig curspex
-        continue
-    end
     eltrials = el.Events.Messages.info(idxx);
     elsamples = el.Events.Messages.time(idxx);
     
@@ -255,7 +187,6 @@ for s = 41%length(subjfolds)
     
     % if practice trials are included (more than 24 1's = start of block) ->
     % only select experimental trials (last 24)
-    
     begexp = find(extrtrig == 1);
     begexp = begexp(end-23:end);
     extrtrig = extrtrig(begexp(1):end);
@@ -263,13 +194,11 @@ for s = 41%length(subjfolds)
     eltrials = eltrials(begexp(1):end);
     
     % eltrl: trigger, sample begin, sample end
-    
-    
     eltrl = [];
     trig_bsl = 1;
     while trig_bsl+2 <= length(extrtrig)
-        % a: beginning of sample, a+1: onset search display, a+2: trial end (4)
         
+        % a: beginning of sample, a+1: onset search display, a+2: trial end (4
         if extrtrig(trig_bsl) >= 5 && extrtrig(trig_bsl) <= trigdef{end,1} && extrtrig(trig_bsl+1) == 2 && extrtrig(trig_bsl+2) == 4
             eltrl = [eltrl;extrtrig(trig_bsl) elsamples(trig_bsl) elsamples(trig_bsl+1) elsamples(trig_bsl+2)];
         end
@@ -282,6 +211,29 @@ for s = 41%length(subjfolds)
     
     % extract samples corresponding to time
     fixdot = propixx_res./2; % coordinates fixation do
+        % resample by hand if sampling rate higher than 1000 has been
+    % used (by accident, this shouldn't happen)
+    bs = find(el.Samples.time == eltrl(1,2));
+    el_fsample = 1000*length(bs);
+    if el_fsample > 1000
+        sr = el_fsample/1000;
+        el_resamp = [];
+        el_resamp.Samples.time = el.Samples.time(1:sr:length(el.Samples.time));
+        el_resamp.Samples.posX = el.Samples.posX(1:sr:length(el.Samples.time));
+        el_resamp.Samples.posY = el.Samples.posY(1:sr:length(el.Samples.time));
+        el_resamp.Events.Esacc.start = el.Events.Esacc.start;
+        el_resamp.Events.Ssacc.time = el.Events.Ssacc.time;
+        el_resamp.Events.Esacc.duration  = el.Events.Esacc.duration;
+        el_resamp.Events.Sblink.time = el.Events.Sblink.time;
+        el_resamp.Events.Messages.info = el.Events.Messages.info;
+        el_resamp.Events.Messages.time = el.Events.Messages.time;
+        
+        el = el_resamp;
+        save(fullfile(dtpth,subjfolds{s},'el_struct.mat'),'el','-v7.3')
+        el_fsample = 1000;
+    end
+    
+    % correct sampling rate (subject 20 has wrong sampling rate)
     elxy = zeros(size(eltrl,1),5.5.*el_fsample,2);
     for e = 1:size(eltrl,1)
         % start sample: index of time
@@ -290,24 +242,23 @@ for s = 41%length(subjfolds)
         es = find(el.Samples.time == eltrl(e,4));
         % store sample info for trial
         eltrl(e,end-2:end) = [bs vs es];
-        elxy(e,1:es-bs+1,1) = el.Samples.posX(bs:es)';
-        elxy(e,1:es-bs+1,2) = el.Samples.posY(bs:es)';
+        elxy(e,1:es(end)-bs+1,1) = el.Samples.posX(bs:es(end))';
+        elxy(e,1:es(end)-bs+1,2) = el.Samples.posY(bs:es(end))';
         
         % check rt
         elrt(e) = (eltrl(e,4)-eltrl(e,3))/el_fsample;
- 
     end
     
     %% Trial type mat file (responses stored during experiment)
     
-    % delete practice mat file
+    % list mat files
     d = dir(fullfile(dtpth,subjfolds{s}));
     
     f = {d.name};
-    % find edf file
     idx = cellfun(@(x) regexp(x,'mat'),f,'UniformOutput',false);
     idxx = cell2mat(cellfun(@(x) ~isempty(x),idx,'UniformOutput',false));
     
+    % delete practice mat file
     f = f(idxx);
     if length(f) > 1
         for h = 1:length(f)
@@ -359,7 +310,7 @@ for s = 41%length(subjfolds)
         subj.srchdsp = subj.srchdsp(end-23:end,:);
     end
     
-    % find trial specifics & trigger!
+    % find trial trigger, response and RT
     
     trltype = subj.exp.trials{1};
     
@@ -387,13 +338,13 @@ for s = 41%length(subjfolds)
     
     % create response cell
     rsp = cell(size(rsptrigc,1),3);
+
     % convert to cell
     rsp(:,1) = arrayfun(@(x) x*1,rsptrigc,'UniformOutput',false);
     
     % helper cell
     h = cell(prod(size(rsptrig)),2);
     % fill in RT and performance
-    % loop over blocks
     c = 0;
     for b = 1:size(subj.rspns,2)
         for t = 1:size(subj.rspns{b},2)
@@ -410,11 +361,15 @@ for s = 41%length(subjfolds)
     
     meg_rt = floor(meg_rt.*100)./100;
     
+    %% check and align response triggers and MEG triggers
+
     if length(rsp) > length(trigtrl_list)
         wm = 1;
         wr = 1;
         rej_rsp = [];
         rsp_trig = [rsp{:,1}]';
+        % if response and MEG trigger are not the same -> delete those that
+        % don't match
         while wm <= length(trigtrl_list) && wr < length(rsptrigc)
             if rsp_trig(wr) ~= trigtrl_list(wm,1)
                 % find the first one that is the same
@@ -432,46 +387,48 @@ for s = 41%length(subjfolds)
     else
         rej_rsp = [];
     end
+    
+    % convert rej_rsp to keep_rsp (from rejection to the ones to be kept)
+    keep_rsp = ~ismember(1:size(rsp,1),rej_rsp);
 
     %% Trial rejection
-
-    % MEG
-    % Reject MEG trials that contain button presses at wrong time (P kept pressing buttons)
-    meg_rej = logical((trigtrl_list(:,1) > 36) + (trigtrl_list(:,2) ~=2));
-
+    
+    % RT read out by stim computer
     rt_array = [rsp{:,3}]';
     rt_array(rej_rsp) = [];
-    % RT
-    % reject that contain RT < 200 ms or RT > 4 s
-    rt_rej = logical(rt_array< 0.2 + rt_array == 4);
-
-    % mutual reject
-    rej_trl = logical(meg_rej + rt_rej);
+    % reject trials with RT < 200 ms or RT > 4 s
+    rej_trl = logical(rt_array< 0.2 + rt_array == 4);
 
     % difference stim RT and MEG RT
     rt_diff = rt_array-meg_rt;
+
+    % if difference larger than expected 14 ms > reject (something wonky
+    % with triggers)
     idx_bigdiff = abs(rt_diff) > 0.014;
     rej_trl = logical(rej_trl+idx_bigdiff);
+    
+    keep_trl = ~rej_trl;
 
     %% save info in elinfo, meginfo, rspinfo
     
     mergesubj{s,2} = length(alltrl_list);
     
-    % store all el info in one struct
+    % store all el info in one struct each per MEG, edf, response
     elinfo.eltrl = eltrl;                   % trial info
     elinfo.move = elxy;                     % movement over time
-    elinfo.rejtrl_all = rej_trl;            % reject these for all
-    elinfo.rej_rsp = rej_rsp;               % reject specifically for eyelink and rsp
-    meginfo.rejtrl_all = rej_trl;           % reject for all
+    elinfo.keeptrl_all = keep_trl;            % reject these for all
+    elinfo.keep_rsp = keep_rsp;               % reject specifically for eyelink and rsp
+    meginfo.keeptrl_all = keep_trl;           % reject for all
     meginfo.meg_rt = meg_rt;
     meginfo.trigtrl = trigtrl_list;
     meginfo.alltrl_list  = alltrl_list;
     meginfo.alltrl_bl = alltrl_bl;
     elinfo.fsample = el_fsample;
+    
     % rsp info as struct
     rspinfo.trl = rsp;                      % trial info (trigger, performance, rt
-    rspinfo.rejtrl_all = rej_trl;       % rejected for all
-    rspinfo.rejtrl_rsp = rej_rsp;       % reject only for response
+    rspinfo.keeptrl_all = keep_trl;       % rejected for all
+    rspinfo.keeptrl_rsp = keep_rsp;       % reject only for response
 
     mkdir(fullfile(pth,'results','meg', '2 merged edf mat', subjfolds{s}))
 
@@ -491,4 +448,4 @@ for s = 41%length(subjfolds)
     
 end
 
-save(fullfile(pth,'results','meg', '2 merged edf mat','docu_merge_sac_search.mat'),'mergesubj')
+save(fullfile(pth,'results','meg', '2 merged edf mat','docu_merge.mat'),'mergesubj')

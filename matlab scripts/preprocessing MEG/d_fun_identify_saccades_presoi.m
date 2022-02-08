@@ -1,15 +1,25 @@
 %% VS + RFT
 % PhD project 2
 
-% identify trials including saccades based on eyelink data
+% d. Identify eye movement
 
 % [c] Katharina Duecker
 
-function a1_fun_identify_saccades(s,pth,dtpth)
+%% Preprocessing
+% a. Define trial structure 
+% b. Semi-automatic artefact rejection
+% c. Define delays in photodiode and reject strange trials 
+% d. Identify eye movement
+% e. Run ICA with maximum 68 components
+% f. Find sensors with significant RFT response
+% g. Split trials into conditions
+
+function a2_fun_identify_saccades_presoi(s,pth,dtpth)
+
 % server path
 scriptpth = fullfile(pth,'matlab scripts/','preprocessing MEG/');
 addpath(fullfile(pth,'matlab scripts/','cbrewer'))
-
+addpath(scriptpth)
 edfconvpath = fullfile(pth,'edf-converter-master/');
 respth = fullfile(pth,'results/','eyelink/','1 identify saccades/');
 trlpth = fullfile(pth,'results/','meg/','2 merged edf mat/');
@@ -19,11 +29,17 @@ mkdir(pltpth)
 
 d = dir(dtpth);
 folds = {d.name};
-subjfolds = folds(strncmp(folds,'202',3));
-load(fullfile(scriptpth,'idx_subjoi.mat'))
+subj = folds(strncmp(folds,'202',3));
+%load(fullfile(scriptpth,'idx_subjoi.mat'))
 
-subj = subjfolds(usable_idx);
+%subj = subjfolds(usable_idx);
+% 
+% num_sac_subj = cell(length(subj),3);
+% save('num_saccades_subj_presoi.mat',"num_sac_subj")
 
+load('num_saccades_subj_presoi.mat')
+num_sac_subj = [num_sac_subj;cell(1,3)];
+num_sac_subj{s,1} = subj{s};
 % screen settings: pixel -> degree
 propixx_res = [1920 1080];                                   % propixx resolution
 scr.w            = 72;                                       % screen width in cm
@@ -43,34 +59,36 @@ hist_bins_y = [sort(propixx_res(2)/2-scr.onedegrpix/4:-scr.onedegrpix/4:0),propi
 
 % saccade threshold
 sac_thresh = 2;
-
-s = 1;
+% time threshold
+time_thresh = 0.3;              % seconds before button press
 
 % load trial structure
 load(fullfile(trlpth,subj{s},"trl_overlap_meg_el_rsp.mat"))
 
-% convert EDF to MAT and save as structure
-file_in = fullfile(dtpth,subj{s},[subj{s}(end-3:end),'.edf']);
+% load eyelink structure
+d = dir(fullfile(dtpth,subj{s}));
+d = {d.name};
 file_out = fullfile(dtpth,subj{s},'el_struct.mat');
 
-el = kd_edf2mat2struct(edfconvpath,fullfile(dtpth,subj{s}),file_in,file_out);
+try
+    load(file_out)
+catch ME
+    error('subject does not have el structure')
+end
 
 % reject trials that could not be aligned with MEG
-eltrl = elinfo.eltrl;                   % trial def
-eltrl(elinfo.rej_rsp,:) = [];           % reject rsp specific trials 
-elxy = elinfo.move;                     % xy over time
-elxy(elinfo.rej_rsp,:,:) = [];            
+eltrl = elinfo.eltrl(elinfo.keep_rsp);                   % trial def
+elxy = elinfo.move(elinfo.keep_rsp);                     % xy over time
 
-eltrl = eltrl(~elinfo.rejtrl_all,:);
-elxy = elxy(~elinfo.rejtrl_all,:,:);
-
-% identify saccades
+eltrl = eltrl(meginfo.keeptrl_all,:);
+elxy = elxy(meginfo.keeptrl_all,:,:);
+% compare saccade timing to onset of trial - wihtin trial?
 sacrej = [];
 c = 0; % counter variable
 for sac = 1:length(el.Events.Esacc.start)
 
     % starts within
-    y = find((eltrl(:,3) < el.Events.Esacc.start(sac)) + (el.Events.Esacc.start(sac) < eltrl(:,4) - (0.4 *  elinfo.fsample)) == 2 );
+    y = find((eltrl(:,3) < el.Events.Esacc.start(sac)) + (el.Events.Esacc.start(sac) < eltrl(:,4) - (time_thresh *  elinfo.fsample)) == 2 );
 
     if ~isempty(y)
         c = c+1;
@@ -86,7 +104,7 @@ for sac = 1:length(el.Events.Esacc.start)
 end
 sacrej = unique(sacrej);
 
-% 2. find saccades >threshold
+% For saccades that happened within trial, are they below the threshold?
 c = 0; % counter variable
 sacrej_liberal = [];
 for sac = 1:length(sacrej)
@@ -110,7 +128,7 @@ for sac = 1:length(sacrej)
 end
 sacrej_liberal = unique(sacrej_liberal);
 
-%% Heatmap
+%% Heatmaps and probability density functions
 clean_trl = setdiff(1:size(eltrl,1),sacrej_liberal);
 
 pdf_clean = zeros(size(clean_trl,2),length(hist_bins_x)-1,length(hist_bins_y)-1);
@@ -161,7 +179,11 @@ xlabel('x degree')
 ylabel('y degree')
 title(['no saccades ',num2str(length(clean_trl))])
 colormap(flipud(cm))
-caxis([0, round(max(m_pdf_clean(:)),1)])
+try 
+ caxis([0, round(max(m_pdf_clean(:)),1)])
+catch
+    caxis([0, 0.05])
+end
 cb = colorbar;
 cb.Label.String = 'probability of coordinates';
 axis xy
@@ -182,7 +204,11 @@ if ~isempty(pdf_sac)
     xticks(0:4:scr.scrdegrw)
     yticks(0:3:scr.scrdegrh)
     colormap(flipud(cm))
-    caxis([0, round(max(m_pdf_sac(:)),1)])
+    try
+        caxis([0, round(max(m_pdf_sac(:)),1)])
+    catch
+        caxis([0, 0.05])
+    end
     cb = colorbar;
     cb.Label.String = 'probability of coordinates';
     axis xy
@@ -191,9 +217,13 @@ end
 print(fig,fullfile(pltpth,[subj{s},'_heatmap_sac_thresh_',num2str(sac_thresh),'_degr']),'-dpng')
 close all
 
+% store number of clean and trials with saccades
+num_sac_subj{s,2} = length(clean_trl);
+num_sac_subj{s,3} = length(sacrej_liberal);
 % save to elinfo
 elinfo.sactrial_lib = sacrej_liberal;
 elinfo.pdf_clean = pdf_clean;
 elinfo.pdf_sac = pdf_sac;
 
 save(fullfile(trlpth,subj{s},"trl_overlap_meg_el_rsp.mat"),'elinfo','-append')
+save('num_saccades_subj_presoi.mat',"num_sac_subj")

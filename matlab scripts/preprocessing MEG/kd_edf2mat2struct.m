@@ -8,7 +8,7 @@
 function el = kd_edf2mat2struct(edfconvpath, subjpth, file_in,file_out)
 
 addpath(edfconvpath)
-obj = Edf2Mat(file_in);
+obj = Edf2Mat(fullfile(subjpth,file_in));
 
 % delete converted file
 try delete(fullfile(subjpth,'el_edf2mat.mat'))
@@ -23,4 +23,8 @@ for p = 1:numel(props)
     end
 end
 
-save(file_out, "el",'-v7.3')
+file_out = fullfile(subjpth,file_out);
+
+if ~exist(file_out)
+    save(file_out, "el",'-v7.3')
+end

@@ -1,13 +1,28 @@
 %% VS + RFT
 % PhD project 2
 
-% use statistical significance as threshold for soi
+% e. Run ICA with maximum 68 components - reject components
 
 % [c] Katharina Duecker
 
-%clear all; close all; clc; beep off
+%% Preprocessing
+% a. Define trial structure 
+% b. Semi-automatic artefact rejection
+% c. Define delays in photodiode and reject strange trials 
+% d. Identify eye movement
+% e. Run ICA with maximum 68 components
+% f. Find sensors with significant RFT response
+% g. Split trials into conditions
+function f1_find_soi_stats(s)
 
-function find_soi_stats(s)
+tbsl = [-1.2 -0.2];
+start_bsl = -2.5;
+end_trl = 2;
+tstim = [0 1];
+rft_freq = [60,67];
+phshft = [0, 0.65];                     % frequency tagging phase shift for 60 vs 67 Hz as used in experiment
+rsmpfrq = 500;                          % resampling frequency
+diode_delay = round(21*(rsmpfrq/1000));                       % diode delay in ms
 % define paths
 pth = '/rds/projects/j/jenseno-visual-search-rft/Visual Search RFT';
 %pth = '/rds/projects/j/jenseno-visual-search-rft/Visual Search RFT';
@@ -17,34 +32,35 @@ rmpath(genpath('/rds/projects/2018/jenseno_entrainment/fieldtrip'))
 megpth = fullfile(pth,'data');
 % maxfiltered data
 dtpth = fullfile(pth,'results','meg', '1 maxfilter');
-% merged file path
-mergepth = fullfile(pth,'results','meg', '2 merged edf mat');
+% ICA comps
+icapth = fullfile(pth,'results','meg', '3 ICA', '1 all subj');
 % coherence path
-cohpth = fullfile(pth,'results','meg', '5 COH hilb', 'soi');
+cohpth = fullfile(pth,'results','meg', '5 COH hilb', 'soi','sinusoid');
+
 addpath('/rds/projects/j/jenseno-visual-search-rft/fieldtrip')
 ft_defaults;
 
-% list subj that have a merge file
-d = dir(mergepth);
+% list subj
+d = dir(dtpth);
 folds = {d.name};
 subjfolds = folds(strncmp(folds,'202',3));
 fs = 1000;
 clear d folds
 
 mkdir(fullfile(cohpth,subjfolds{s}))
+% 
+% % don't run if soi have been identified for this subject
+% if exist(fullfile(cohpth,subjfolds{s},'soi_stat.mat'))
+%     error(['soi already found for ',subjfolds{s}])
+% end
 
 % load clean trial structure
-load(fullfile(mergepth, 'docu_merge.mat'))
-empty_idx = logical(cell2mat(cellfun(@isempty,mergesubj(:,2),'UniformOutput',false)));
-mergesubj = mergesubj(~empty_idx,:)
 
-load(fullfile(mergepth, subjfolds{s},'trl_overlap_meg_el_rsp.mat'))
+load(fullfile(pth,'results','meg', '2 merged edf mat', subjfolds{s},'trl_overlap_meg_el_rsp.mat'),'meginfo')
 
 % trial structure to load in trl
 for p = 1:length(meginfo.alltrl_bl)
-   trlstruct{p} = [meginfo.alltrl_bl{p}(:,3)-fs*2.5,meginfo.alltrl_bl{p}(:,3)+fs*2,repmat(-2.5*fs,size(meginfo.alltrl_bl{p},1),1)];
-   trlstruct{p}(trlstruct{p}(:,1) <0,1) = 1;
-    
+    trlstruct{p} = [meginfo.alltrl_bl{p}(:,3)+start_bsl*fs,meginfo.alltrl_bl{p}(:,3)+end_trl*fs,repmat(start_bsl*fs,size(meginfo.alltrl_bl{p},1),1)];
 end
 
 % list fif files
@@ -62,51 +78,44 @@ for p = 1:length(f)
     cfg.dataset = fullfile(dtpth,subjfolds{s},f{p});
     cfg.preproc.detrend = 'yes';
     cfg.trl = trlstruct{p};
-    cfg.channel = {'MEG'};
+    cfg.channel = {'MEG','MISC004', 'MISC005'};
+    
     % load data and diode separately (to be able to reject ICA)
     % load in data for this part
     dtprt{p} = ft_preprocessing(cfg);
-    % diodes
-    cfg.channel = {'MISC004', 'MISC005'};
-    diodes_trl{p}= ft_preprocessing(cfg);
-
+    
 end
 
 data = ft_appenddata([],dtprt{:});
-diodes = ft_appenddata([], diodes_trl{:});
+data.hdr = dtprt{1}.hdr;
 
-% weird trials (subject 15 - first trial messed up
-time_end = cell2mat(cellfun(@(x) x(end),diodes.time,'UniformOutput',false));
+meginfo.alltrl_list = meginfo.alltrl_list(logical(meginfo.keeptrl_all),:);
 
-meginfo.rejtrl_all = [find(meginfo.rejtrl_all);find(time_end~=2)'];
-
-save(fullfile(pth,'results','meg', '2 merged edf mat', subjfolds{s},'trl_overlap_meg_el_rsp.mat'),'elinfo','rspinfo','meginfo','-v7.3')
+% separate MEG sensors and diodes
+cfg = [];
+cfg.channel = 'MEG';
+cfg.trials =find(meginfo.keeptrl_all);                   % select clean trials
+datameg = ft_selectdata(cfg,data);
+cfg.channel = {'MISC004','MISC005'};
+diodes = ft_selectdata(cfg,data);
+clear data
 
 % fix sampleinfo
-sinfo = zeros(length(data.trial),1);
-% first trial samples: 0 to length of data in samples
-sinfo(1,2) = size(data.trial{1},2);
-for t = 2:length(data.trial)
-    % next trial: one sample after end of previous
-    sinfo(t,1) = sinfo(t-1,2) + 1;
-    % start sample + length of trial - 1
-    sinfo(t,2) = sinfo(t,1) + size(data.trial{t},2);
-end
-
-data.sampleinfo = sinfo;
-
-% select trials to be kept
-if ~isempty(meginfo.rejtrl_all)
-    cfg = [];
-    cfg.trials = ~ismember(1:length(data.sampleinfo),meginfo.rejtrl_all);
-    data = ft_selectdata(cfg,data);  
-    diodes = ft_selectdata(cfg,diodes);
-
-    meginfo.alltrl_list(meginfo.rejtrl_all,:) = [];
-end
+trl_end_samp = cell2mat(cellfun(@length,datameg.trial,'UniformOutput',false)).*[1:length(datameg.trial)];
+datameg.sampleinfo = [[1;1+trl_end_samp(1:end-1)'],trl_end_samp'];
+diodes.sampleinfo = [[1;1+trl_end_samp(1:end-1)'],trl_end_samp'];
 
 
-clear dtprt diodes_trl
+
+%% Reject ICA comps
+
+load(fullfile(icapth, [subjfolds{s},'_ica.mat']))
+
+% reject comps
+cfg = [];
+cfg.component = badcomps; % to be removed component(s)
+dataclean = ft_rejectcomponent(cfg, dataICA, datameg);
+clear dataICA dtprt diodes_trl
 
 % average grad positions
 d = dir(fullfile(megpth,subjfolds{s}, 'meg'));
@@ -127,9 +136,10 @@ end
 mGrad.chanpos = mGrad.chanpos./length(grad);
 clear grad
 
+dataclean.grad = mGrad;
+
 % concatenate cleaned data and diodes
-data = ft_appenddata([],data,diodes);
-clear diodes diodes_trl dataclean
+data = ft_appenddata([],dataclean,diodes);
 
 % relabel diode: 60 Hz vs 67 Hz
 load(fullfile(pth,'experiment','trigdef.mat'))
@@ -175,7 +185,6 @@ clear dat_misc4_60 dat_misc5_60
 % relabel
 dat_misc4_60_m4.label = {'diode 60'};
 dat_misc4_60_m5.label = {'diode 67'};
-
 dat_misc5_60_m5.label = {'diode 60'};
 dat_misc5_60_m4.label = {'diode 67'};
 
@@ -184,15 +193,29 @@ dat_misc4_60_newlbl = ft_appenddata([],dat_misc4_60_meg,dat_misc4_60_m4,dat_misc
 dat_misc5_60_newlbl = ft_appenddata([],dat_misc5_60_meg,dat_misc5_60_m5,dat_misc5_60_m4);
 
 clear dat_misc4_60_m4 dat_misc4_60_m5 dat_misc4_60_meg dat_misc5_60_m4 dat_misc5_60_m5 dat_misc5_60_meg
+
 % append
 data = ft_appenddata([],dat_misc4_60_newlbl,dat_misc5_60_newlbl);
 
+diode_idx = find(ismember(data.label,{'diode 60','diode 67'}));
+
+% replace diode with perfect sinusoid
+data = kd_replace_diode_sinu(data,diode_idx,rft_freq,phshft,start_bsl,fs);
+
+% resample
+cfg = [];
+cfg.resamplefs = rsmpfrq;
+data = ft_resampledata(cfg,data);
+
+
 % separate baseline and flicker
 cfg = [];
-cfg.latency = [-1 0-1/1000];
+cfg.latency = tbsl;
 data_bsl = ft_selectdata(cfg,data);
-cfg.latency = [0.5 1.5-1/1000];
+cfg.latency = tstim;
 data_rft = ft_selectdata(cfg,data);
+
+
 
 clear data
 % fourier spectra
@@ -207,7 +230,7 @@ fourier_bl       = ft_freqanalysis(cfg,data_bsl);
 
 clear data*
 % statistical test for each occipital sensor
-load(fullfile(pth,'matlab scripts','preprocessing MEG','soi pipeline','occi_sens.mat'))
+load(fullfile(pth,'matlab scripts','preprocessing MEG','occi_sens.mat'))
 nchancom = length(occi_soi);
 stat_mask_60 = zeros(nchancom,1);
 
