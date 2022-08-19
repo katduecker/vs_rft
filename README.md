@@ -16,6 +16,8 @@ Filtering based on maxwell equations and denoising of the sensors is implemented
 
 ### Experiment code
 
+implemented in Psychtoolbox
+
 ### MEG pre-processing
 
 - Alignment of MEG, behavioral and eye movement data
