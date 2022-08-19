@@ -2,7 +2,7 @@
 
 The repository contains all scripts associated with an Magnetoencephalography (MEG) study aimed at investigating the neural correlates of Guided Search.
 
-Please see [here](https://github.com/katduecker/posters/blob/main/duecker_et_al_ICON_2022.pdf) for the most recent poster on the project.
+Please click [here](https://github.com/katduecker/posters/blob/main/duecker_et_al_ICON_2022.pdf) for the most recent poster on the project.
 
 The analyses is still in progress and will be updated irregularly.
 
