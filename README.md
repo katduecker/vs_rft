@@ -1,10 +1,6 @@
 # Visual Search & Rapid Frequency Tagging
 
-The repository contains all scripts associated with an Magnetoencephalography (MEG) study aimed at investigating the neural correlates of Guided Search.
-
-Please click [here](https://github.com/katduecker/posters/blob/main/duecker_et_al_ICON_2022.pdf) for the most recent poster on the project.
-
-The analyses is still in progress and will be updated irregularly.
+The repository contains all scripts associated with a Magnetoencephalography (MEG) study aimed at investigating the neural correlates of Guided Search.
 
 ## MNE scripts
 
@@ -12,22 +8,55 @@ The analyses is still in progress and will be updated irregularly.
 
 Filtering based on maxwell equations and denoising of the sensors is implemented in MNE python.
 
+
+## Experiment code
+
+experiment/a_exp is the main experiment file;
+only works with Propixx Lite projector and has been developed for MATLAB/2017a
+
+
 ## MATLAB scripts
 
-### Experiment code
+Used for all analyses in the manuscript
 
-implemented in Psychtoolbox
+### alpha
+- a: TFR 4 - 30 Hz for each participant
+- b: find Individual Alpha Frequency and sensors of interest
+- c: align TFR to IAF
+- d: alpha power per condition; performance ~ median split high/low alpha
+- e: confirmatory analysis TFR for fast vs slow trials
 
-### MEG pre-processing
+### behaviour
+- a: behaviour per condition
+- b: behaviour for alpha high/low
+- c: confirmatory analysis: correlation reaction time ~ alpha power (mentioned in manuscript but not explicitly plotted)
 
-- Alignment of MEG, behavioral and eye movement data
-- Semi-automatic artefact rejection
-- Independent Component Analysis
-- Identification of sensors showing significant RFT response
+### cbrewer
 
-all implemented in MATLAB using the fieldtrip toolbox
+brewer colormap
 
-### MEG spectral analysis
+### coherence
+- a: coherence collapsed over trials for topo plots
+- b: coherence per condition (priority map)
+- c: coherence for fast vs slow (only weak relationship)
+- d: coherence for alpha high vs low
 
-- Time-Frequency representation of power (for frequencies < 30 Hz)
-- Coherence between MEG sensors of interest and tagging frequency
+
+### eye movement
+- a: ocular artefacts for alpha high vs low
+- b: ocular artefacts for fast vs slow trials
+
+### preprocessing MEG
+- a: merge .fif; .edf; and .mat (behaviour) files
+- b: semi-automatic artefact rejection
+- c: find the delay between trigger and diode onset (important to replace diode signal with sine wave)
+- d: identify saccades (this is exploratory, there were too many saccades so we controlled for them with analyses mentioned above)
+- e: ICA
+- f: find tagging sensors of interest -> decide which stimuli to keep
+- g: separate data into conditions (this saves one .mat files with MEG data and performance for each condition)
+
+### source: DICS beamformer
+- a: align T1 to digitized fiducials
+- b: estimate leadfield
+- c: DICS for RIFT, alpha pre-search and during search
+- d: plot
