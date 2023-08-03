@@ -1,6 +1,8 @@
-# Visual Search & Rapid Frequency Tagging
+# Alpha oscillations support the efficiency of guided visual search by inhibiting both target and distractor features in early visual cortex
 
-The repository contains all scripts associated with a Magnetoencephalography (MEG) study aimed at investigating the neural correlates of Guided Search.
+The repository contains all scripts associated with a Magnetoencephalography (MEG) - Rapid Invisible Frequency Tagging study aimed at investigating the neural correlates of Guided Search.
+
+authors: Katharina Duecker, Kimron L. Shapiro, Simon Hanslmayr, Jeremy Wolfe, Yali Pan, and Ole Jensen
 
 ## MNE scripts
 
