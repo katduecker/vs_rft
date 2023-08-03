@@ -1,9 +1,13 @@
-%% VS + RFT
-% PhD project 2
+%% Visual Search + RIFT
+% Duecker, Shapiro, Hanslmayr, Wolfe, Pan, and Jensen
 
-% e. Run ICA with maximum 68 components - reject components
+% f1. Identify sensors w/ significant RIFT response (see Maris & Oostenveld,
+% 2007; Pan et al. 2021)
+% [c] Katharina Duecker, katharina.duecker@gmail.com
+% last changed/checked 2 Aug 2023
 
-% [c] Katharina Duecker
+% Output
+% - soi_stat: sensors with significant tagging response
 
 %% Preprocessing
 % a. Define trial structure 
@@ -13,16 +17,22 @@
 % e. Run ICA with maximum 68 components
 % f. Find sensors with significant RFT response
 % g. Split trials into conditions
+
 function f1_find_soi_stats(s)
 
-tbsl = [-1.2 -0.2];
+
+% settings to identify sensors as descirbed in manuscript
+tbsl = [-.7 -0.2];
 start_bsl = -2.5;
 end_trl = 2;
-tstim = [0 1];
+tstim = [0 .5];
 rft_freq = [60,67];
 phshft = [0, 0.65];                     % frequency tagging phase shift for 60 vs 67 Hz as used in experiment
-rsmpfrq = 500;                          % resampling frequency
-diode_delay = round(21*(rsmpfrq/1000));                       % diode delay in ms
+% rsmpfrq = 1000;                          % resampling frequency
+noise = 0;
+
+
+
 % define paths
 pth = '/rds/projects/j/jenseno-visual-search-rft/Visual Search RFT';
 %pth = '/rds/projects/j/jenseno-visual-search-rft/Visual Search RFT';
@@ -31,7 +41,7 @@ rmpath(genpath('/rds/projects/2018/jenseno_entrainment/fieldtrip'))
 % rawdata 
 megpth = fullfile(pth,'data');
 % maxfiltered data
-dtpth = fullfile(pth,'results','meg', '1 maxfilter');
+dtpth = fullfile(pth,'results','meg', '1 maxfilter', '1 maxfilter');
 % ICA comps
 icapth = fullfile(pth,'results','meg', '3 ICA', '1 all subj');
 % coherence path
@@ -88,7 +98,7 @@ end
 
 data = ft_appenddata([],dtprt{:});
 data.hdr = dtprt{1}.hdr;
-
+clear dtprt
 meginfo.alltrl_list = meginfo.alltrl_list(logical(meginfo.keeptrl_all),:);
 
 % separate MEG sensors and diodes
@@ -115,31 +125,33 @@ load(fullfile(icapth, [subjfolds{s},'_ica.mat']))
 cfg = [];
 cfg.component = badcomps; % to be removed component(s)
 dataclean = ft_rejectcomponent(cfg, dataICA, datameg);
-clear dataICA dtprt diodes_trl
+clear dataICA dtprt diodes_trl datameg
 
 % average grad positions
-d = dir(fullfile(megpth,subjfolds{s}, 'meg'));
+d = dir(fullfile(dtpth,subjfolds{s}));
 files = {d.name};
-files = files(strncmp(files,'part',4));
-
+files = files(cell2mat(cellfun(@(x) ~isempty(x),regexp(files,'.fif'),'UniformOutput',false)));
+% 
 grad = [];
 for fl = 1:length(files)
-    grad = [grad;ft_read_sens(fullfile(megpth,subjfolds{s},'meg',files{fl}))];
+    grad = [grad;ft_read_sens(fullfile(dtpth,subjfolds{s},files{fl}))];
 end
-
+% 
 % mean channel position
 mGrad = grad(1);
 % average grad structure
 for g = 2:length(grad)
 mGrad.chanpos = mGrad.chanpos + grad(g).chanpos;
+mGrad.coilpos = mGrad.coilpos + grad(g).coilpos;
 end
 mGrad.chanpos = mGrad.chanpos./length(grad);
+mGrad.coilpos = mGrad.coilpos./length(grad);
 clear grad
-
-dataclean.grad = mGrad;
 
 % concatenate cleaned data and diodes
 data = ft_appenddata([],dataclean,diodes);
+clear dataclean diodes
+data.grad = mGrad;
 
 % relabel diode: 60 Hz vs 67 Hz
 load(fullfile(pth,'experiment','trigdef.mat'))
@@ -182,7 +194,8 @@ dat_misc4_60_m5 = ft_selectdata(cfg,dat_misc4_60);
 dat_misc5_60_m5 = ft_selectdata(cfg,dat_misc5_60);
 
 clear dat_misc4_60 dat_misc5_60
-% relabel
+
+% relabel based on tagging frequency
 dat_misc4_60_m4.label = {'diode 60'};
 dat_misc4_60_m5.label = {'diode 67'};
 dat_misc5_60_m5.label = {'diode 60'};
@@ -196,16 +209,16 @@ clear dat_misc4_60_m4 dat_misc4_60_m5 dat_misc4_60_meg dat_misc5_60_m4 dat_misc5
 
 % append
 data = ft_appenddata([],dat_misc4_60_newlbl,dat_misc5_60_newlbl);
-
+clear data_misc*
 diode_idx = find(ismember(data.label,{'diode 60','diode 67'}));
 
 % replace diode with perfect sinusoid
-data = kd_replace_diode_sinu(data,diode_idx,rft_freq,phshft,start_bsl,fs);
+data = kd_replace_diode_sinu(data,diode_idx,rft_freq,phshft,start_bsl,fs,noise);
 
-% resample
-cfg = [];
-cfg.resamplefs = rsmpfrq;
-data = ft_resampledata(cfg,data);
+% % resample
+% cfg = [];
+% cfg.resamplefs = rsmpfrq;
+% data = ft_resampledata(cfg,data);
 
 
 % separate baseline and flicker
@@ -215,20 +228,18 @@ data_bsl = ft_selectdata(cfg,data);
 cfg.latency = tstim;
 data_rft = ft_selectdata(cfg,data);
 
-
-
 clear data
 % fourier spectra
 cfg              = [];
 cfg.output       = 'fourier';
 cfg.method       = 'mtmfft';
 cfg.taper        = 'hanning';
-cfg.foi          = [60, 67];
+cfg.foi          = 60;
 %cfg.pad          = 'nextpow2';
 fourier          = ft_freqanalysis(cfg,data_rft);
 fourier_bl       = ft_freqanalysis(cfg,data_bsl);
-
 clear data*
+
 % statistical test for each occipital sensor
 load(fullfile(pth,'matlab scripts','preprocessing MEG','occi_sens.mat'))
 nchancom = length(occi_soi);
@@ -258,7 +269,6 @@ for i = 1:nchancom
     cfg.design = design;
     stat = ft_freqstatistics(cfg, fourier_tmp, fourier_bl_tmp);
     stat_mask_60(i) = stat.mask;
-    stat_p_60(i,1)  = stat.prob;
     clear fourier_tmp fourier_bl_tmp
 end
 
@@ -269,5 +279,7 @@ end
 %load(fullfile(pth,'matlab scripts', 'preprocessing','soi_stat_allp.mat'))
 soi_stat = occi_soi(logical(stat_mask_60));
 
-save(fullfile(cohpth,subjfolds{s},'soi_stat.mat'),'soi_stat')
+save(fullfile(cohpth,subjfolds{s},'soi_stat.mat'),'soi_stat','noise','tbsl','tstim')
+
+
 

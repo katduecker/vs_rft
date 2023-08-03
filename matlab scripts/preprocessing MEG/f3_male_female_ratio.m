@@ -1,7 +1,25 @@
-%% VS + RFT
-% PhD project 2
+%% Visual Search + RIFT
+% Duecker, Shapiro, Hanslmayr, Wolfe, Pan, and Jensen
 
-% Male/female ratio
+% f3. number of male and female P's in final sample
+
+% [c] Katharina Duecker, katharina.duecker@gmail.com
+% last changed/checked 2 Aug 2023
+
+% Output
+% - usable_idx: index of subject with soi
+% - num_soi: number of identified soi
+% - subj: subject id
+
+%% Preprocessing
+% a. Define trial structure 
+% b. Semi-automatic artefact rejection
+% c. Define delays in photodiode and reject strange trials 
+% d. Identify eye movement
+% e. Run ICA with maximum 68 components
+% f. Find sensors with significant RFT response
+% g. Split trials into conditions
+
 clear all; close all; clc; beep off;
 pth = 'Z:\Visual Search RFT';
 dtpth = fullfile(pth,'data');
@@ -12,7 +30,7 @@ d = dir(dtpth);
 d = {d.name};
 subjfolds = d(strncmp(d,'202',3));
 
-load(fullfile(scriptpth,'idx_subjoi.mat'))
+load(fullfile(scriptpth,'idx_subjoi_not_align.mat'))
 
 subjfolds = subjfolds(usable_idx);
 clear d

@@ -1,9 +1,16 @@
-%% VS + RFT0)
-% PhD project 2
+%% Visual Search + RIFT
+% Duecker, Shapiro, Hanslmayr, Wolfe, Pan, and Jensen
 
-% e. Run ICA with maximum 68 components
+% e. Run ICA
 
-% [c] Katharina Duecker
+% [c] Katharina Duecker, katharina.duecker@gmail.com
+% last changed/checked 2 Aug 2023
+
+% Input:
+% - s: subject index
+
+% Output
+% - result of ft_componentanalysis for each subject (saved as matfile)
 
 %% Preprocessing
 % a. Define trial structure 
@@ -14,7 +21,7 @@
 % f. Find sensors with significant RFT response
 % g. Split trials into conditions
 
-function e1_fun_ICA(s,rej_sac)
+function e1_fun_ICA(s)
 
 pth = '/rds/projects/j/jenseno-visual-search-rft/Visual Search RFT';                                          % server path
 dtpth = fullfile(pth, 'data'); % data path
@@ -35,7 +42,14 @@ subj = folds(strncmp(folds,'202',3));
 fs = 1000;
 clear d folds
 
-
+% load(fullfile(mergepth,'docu_merge.mat'))
+% subj2 = subj(strcmp(mergesubj(:,3),'adjusted'));
+% d = dir(icapth);
+% folds = {d.name};
+% subj3 = folds(strncmp(folds,'202',3));
+% subj3 = cellfun(@(x) x(1:13),subj3,'UniformOutput',false);
+% 
+% mergesubj(find(ismember(subj,setdiff(subj2,subj3))),:)
 % load in trial structure
 load(fullfile(mergepth, subj{s},'trl_overlap_meg_el_rsp.mat'))
 
@@ -72,13 +86,6 @@ trl_idx = 1:length(data.trial);
 cfg = [];
 cfg.trials = trl_idx(meginfo.keeptrl_all);
 data = ft_selectdata(cfg,data);
-
-% reject eye movement trials
-if rej_sac
-    trl_idx = 1:length(data.trial);
-    cfg.trials = ~ismember(trl_idx,elinfo.sactrial_lib);
-    data = ft_selectdata(cfg,data);
-end
 
 % sampleinfo
 trl_end_samp = cell2mat(cellfun(@length,data.trial,'UniformOutput',false)).*[1:length(data.trial)];

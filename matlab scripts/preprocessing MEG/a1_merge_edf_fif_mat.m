@@ -1,17 +1,20 @@
-%% VS + RFT
-% PhD project 2
+%% Visual Search + RIFT
+% Duecker, Shapiro, Hanslmayr, Wolfe, Pan, and Jensen
 
-% b. Semi-automatic artefact rejection
+% a1. Define trial structure
 
-% [c] Katharina Duecker
+% [c] Katharina Duecker, katharina.duecker@gmail.com
+% last changed/checked 2 Aug 2023
+
+% a. Define trial structure
 
 % outputs: trl_overlap_meg_el_rsp.mat
 
 % - meginfo: structure containing 
 %   - alltrl_bl/alltrl_list: info on MEG trials, indices in blocks and lists
-%   - keeptrl_all:            index of trials that should be rejected from edf, matfile and MEG rejtrl_all
-%   - meg_rt:                reaction time read out by triggers
-%   - trigtrl:               triggers read out for each trial (should be trial type, 2, number >5000 - button press)
+%   - keeptrl_all:           index of trials that should be rejected from edf, matfile and MEG
+%   - meg_rt:                reaction time read out by MEG triggers
+%   - trigtrl:               triggers read out for each trial (order should be trial type, 2, number >5000 = button press)
 
 % - elinfo: structure containing
 %   - eltrl (trial information): 
@@ -23,16 +26,16 @@
 
 % - rspinfo: structure containing
 %   - trl: cell containing trial type (trigger), 'h/m/fa', RT as read out by stim computer
-%   - keeptrl_rsp (same as elinfo): logical array, trials to be kept based on response file -> use before keeptrl_all!
+%   - keeptrl_rsp (same as elinfo): logical array, trials to be kept based on response file -> use before meginfo.keeptrl_all!
 %   - keeptrl_all (same as elinfo): logical array, which trials to be kept of all (after rsp have been selected)
 
 %% Preprocessing
 % a. Define trial structure 
 % b. Semi-automatic artefact rejection
 % c. Define delays in photodiode and reject strange trials 
-% d. Identify eye movement
+% d. Identify eye movement -> just sanity check, kept trials w/ saccades
 % e. Run ICA with maximum 68 components
-% f. Find sensors with significant RFT response
+% f. Find sensors with significant RIFT response
 % g. Split trials into conditions
 
 clear all; close all; clc; beep off
@@ -61,6 +64,7 @@ subjfolds = folds(strncmp(folds,'202',3));
 fs = 1000;
 clear d folds
 
+
 % document: subject id, n trial meg, el adjusted, response adjusted
 if exist(fullfile(pth,'results','meg', '2 merged edf mat','docu_merge.mat'))             % subject documentation exists already
     load(fullfile(pth,'results','meg', '2 merged edf mat','docu_merge.mat'))             % load
@@ -77,7 +81,7 @@ load(fullfile(pth,'experiment','button_val.mat'),'buttons_right');
 buttons_right = buttons_right(1:3);
 
 
-for s = [21,27]
+for s = 19%:length(subjfolds)
     % current subject
     disp(['subj ', subjfolds{s}])
     mergesubj{s,1} = subjfolds{s};
@@ -110,13 +114,12 @@ for s = [21,27]
 
             % if there is two
         elseif length(edf_files) == 2
-            el = kd_edf2mat2struct_(edfconvpath, fullfile(dtpth,subjfolds{s}), edf_files,file_out);
+            el = kd_edf2mat2struct_2files(edfconvpath, fullfile(dtpth,subjfolds{s}), edf_files,file_out);
             el_fsample = 1000;
 
             % error if there is none or >2
         else
             mergesubj{s,3} = 'unusual number of el files';
-            continue
         end
     end
     
@@ -147,6 +150,7 @@ for s = [21,27]
         allval = [events{fl}(find(strcmp('STI101',{events{fl}.type}))).value];   % these are all values, extract button press
         allsmp = [events{fl}(find(strcmp('STI101',{events{fl}.type}))).sample];
 
+        find(allval==1)
         % get trigger indices
         trig_bsl = find((allval >= 5)+(allval<=trigdef{end,1}) == 2);
 
@@ -170,6 +174,8 @@ for s = [21,27]
     if length(trigtrl_list) < 800
         mergesubj{s,3} = 'trigger messed up';
         continue
+    elseif length(trigtrl_list) > 960
+        error('too many trials')
     end
     meg_rt = (alltrl_list(:,4) - alltrl_list(:,3))/1000;
     
@@ -211,8 +217,8 @@ for s = [21,27]
     
     % extract samples corresponding to time
     fixdot = propixx_res./2; % coordinates fixation do
-        % resample by hand if sampling rate higher than 1000 has been
-    % used (by accident, this shouldn't happen)
+    
+    % resample by hand if sampling rate higher than 1000 has been by accident, this shouldn't happen)
     bs = find(el.Samples.time == eltrl(1,2));
     el_fsample = 1000*length(bs);
     if el_fsample > 1000
@@ -233,17 +239,18 @@ for s = [21,27]
         el_fsample = 1000;
     end
     
-    % correct sampling rate (subject 20 has wrong sampling rate)
+    % store eye movement in matrix
     elxy = zeros(size(eltrl,1),5.5.*el_fsample,2);
     for e = 1:size(eltrl,1)
         % start sample: index of time
-        bs = find(el.Samples.time == eltrl(e,2));
-        vs = find(el.Samples.time == eltrl(e,3));
-        es = find(el.Samples.time == eltrl(e,4));
+        bs = find(el.Samples.time == eltrl(e,2));   % first baseline sample
+        vs = find(el.Samples.time == eltrl(e,3));   % first search sample
+        es = find(el.Samples.time == eltrl(e,4));   % end sample
+
         % store sample info for trial
         eltrl(e,end-2:end) = [bs vs es];
-        elxy(e,1:es(end)-bs+1,1) = el.Samples.posX(bs:es(end))';
-        elxy(e,1:es(end)-bs+1,2) = el.Samples.posY(bs:es(end))';
+        elxy(e,1:es(end)-bs+1,1) = el.Samples.posX(bs:es(end))';    % movement in x direction
+        elxy(e,1:es(end)-bs+1,2) = el.Samples.posY(bs:es(end))';    % movement in y direction
         
         % check rt
         elrt(e) = (eltrl(e,4)-eltrl(e,3))/el_fsample;
@@ -290,17 +297,22 @@ for s = [21,27]
         for i = 1:length(f)
             subj_all{i} = load(fullfile(dtpth,subjfolds{s},f{i}));
         end
+
+        % set "subj" to first file and concatenate second file
         subj = subj_all{1}.subj;
         
         subj.exp.trials{1} = [];
         subj.exp.trials{2} = [];
         subj.srchdsp = {};
         subj.rspns = {};
+
+        % 
         for i = 1:length(f)
-            subj.exp.trials{1} = [subj.exp.trials{1};subj_all{i}.subj.exp.trials{1}];
-            subj.exp.trials{2} = [subj.exp.trials{2};subj_all{i}.subj.exp.trials{2}];
-            subj.srchdsp = [subj.srchdsp;subj_all{i}.subj.srchdsp];
-            subj.rspns = [subj.rspns,subj_all{i}.subj.rspns];
+            subj.exp.trials{1} = [subj.exp.trials{1};subj_all{i}.subj.exp.trials{1}];       % trial type
+            subj.exp.trials{2} = [subj.exp.trials{2};subj_all{i}.subj.exp.trials{2}];       % baseline (always 1.5, this is included for historic reasons)
+
+            subj.srchdsp = [subj.srchdsp;subj_all{i}.subj.srchdsp];                         % search display layout
+            subj.rspns = [subj.rspns,subj_all{i}.subj.rspns];                               % responses
         end
         
         % number of blocks = 23
@@ -323,12 +335,14 @@ for s = [21,27]
             curspex = cellfun(@num2str,trltype{b,t},'UniformOutput',false);
             curspex = [curspex{:}];
             
+            % decode trial type string into trigger
             rsptrig(b,t) = trigdef{ismember(trigdef(:,2),curspex),1};
+
             % store reaction time
             if ~isempty(subj.rspns{b}{3,t})
                 rt(b,t) = subj.rspns{b}{3,t};
             else 
-                rt(b,t) = 4;
+                rt(b,t) = 4;      % if no response, RT = 4
             end
         end
     end
@@ -349,8 +363,11 @@ for s = [21,27]
     for b = 1:size(subj.rspns,2)
         for t = 1:size(subj.rspns{b},2)
             c = c + 1;
+
+            % 1st: hit/miss/fa - 2nd: RT
             h(c,:) = {subj.rspns{b}{end,t}, subj.rspns{b}{3,t}};
             
+            % if no RT = 4
             if isempty(subj.rspns{b}{3,t})
                 h(c,:) = {subj.rspns{b}{end,t}, 4};
             end
@@ -367,10 +384,14 @@ for s = [21,27]
         wm = 1;
         wr = 1;
         rej_rsp = [];
+
+        % trigger stored in RSP
         rsp_trig = [rsp{:,1}]';
         % if response and MEG trigger are not the same -> delete those that
         % don't match
         while wm <= length(trigtrl_list) && wr < length(rsptrigc)
+
+            % if response trigger and MEG trigger are not the sampe
             if rsp_trig(wr) ~= trigtrl_list(wm,1)
                 % find the first one that is the same
                 x = find(rsp_trig(wr:end)==trigtrl_list(wm,1),1);
@@ -396,16 +417,15 @@ for s = [21,27]
     % RT read out by stim computer
     rt_array = [rsp{:,3}]';
     rt_array(rej_rsp) = [];
-    % reject trials with RT < 200 ms or RT > 4 s
-    rej_trl = logical(rt_array< 0.2 + rt_array == 4);
-
+    
+   
     % difference stim RT and MEG RT
     rt_diff = rt_array-meg_rt;
 
     % if difference larger than expected 14 ms > reject (something wonky
     % with triggers)
     idx_bigdiff = abs(rt_diff) > 0.014;
-    rej_trl = logical(rej_trl+idx_bigdiff);
+    rej_trl = logical(idx_bigdiff);
     
     keep_trl = ~rej_trl;
 
@@ -436,16 +456,15 @@ for s = [21,27]
     mergesubj{s,3} = 'adjusted';
     mergesubj{s,4} = 'adjusted';
 
-    mkdir(fullfile(pth,'results','meg', '2 merged edf mat', subjfolds{s}))
-    save(fullfile(pth,'results','meg', '2 merged edf mat', subjfolds{s},...
+    mkdir(fullfile(trl_merge_pth, subjfolds{s}))
+    save(fullfile(trl_merge_pth, subjfolds{s},...
         'trl_overlap_meg_el_rsp.mat'),'rspinfo','elinfo','meginfo','-v7.3')
     
    
     
-    save(fullfile(pth,'results','meg', '2 merged edf mat','docu_merge.mat'),'mergesubj')
-    clear events all* begexp a b d f fl t w el* rej* rsp* tr* idx* extrtrig curspex
+    save(fullfile(trl_merge_pth,'docu_merge.mat'),'mergesubj')
 
     
 end
 
-save(fullfile(pth,'results','meg', '2 merged edf mat','docu_merge.mat'),'mergesubj')
+save(fullfile(trl_merge_pth,'docu_merge.mat'),'mergesubj')

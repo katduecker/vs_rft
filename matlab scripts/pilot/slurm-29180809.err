@@ -1,6 +1,0 @@
-Java/1.8.0_241
-MATLAB/2019b
-{Unrecognized function or variable 'numstr'.
-
-Error in b_hilb_fun (line 167)
-save(fullfile(pthout,[subjcode,'coh_hilbert_ftrip_fwidth_',numstr(frqwdth),'.mat']),'coh_meg_misc4','csd_meg_misc4','psd_meg','psd_misc4')} 

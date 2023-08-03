@@ -1,9 +1,29 @@
-%% VS + RFT
-% PhD project 2
+%% Visual Search + RIFT
+% Duecker, Shapiro, Hanslmayr, Wolfe, Pan, and Jensen
 
-% convert EDF2MAT and store edf object as structure
+% helper function for a.: convert edf file to matlab structure 
 
-% [c] Katharina Duecker      
+% [c] Katharina Duecker, katharina.duecker@gmail.com
+% last changed/checked 2 Aug 2023
+
+
+% Input
+% - edfconvpath: path where edf2mat is stored
+% - subjpth: subject data path
+% - file_in: file name .edf file
+% - file_out: output filename
+
+% Output
+% - soi_stat: sensors with significant tagging response
+
+%% Preprocessing
+% a. Define trial structure 
+% b. Semi-automatic artefact rejection
+% c. Define delays in photodiode and reject strange trials 
+% d. Identify eye movement
+% e. Run ICA with maximum 68 components
+% f. Find sensors with significant RFT response
+% g. Split trials into conditions
 
 function el = kd_edf2mat2struct(edfconvpath, subjpth, file_in,file_out)
 
